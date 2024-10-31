@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { isArrayOf, isEqualTo, isNumber, isString, optional, validateObject } from "@fi-sci/misc";
+import { isArrayOf, isEqualTo, isNumber, isString, optional, validateObject, isBoolean } from "@fi-sci/misc";
 
 export type NeurosiftSavedChat = {
   chatId: string
@@ -24,7 +24,7 @@ export const isNeurosiftSavedChat = (x: any): x is NeurosiftSavedChat => {
     nwbFileUrl: optional(isString),
     feedbackResponse: optional(isString),
     feedbackNotes: optional(isString),
-    feedbackOnly: optional(isString),
+    feedbackOnly: optional(isBoolean),
     userId: optional(isString),
     timestampCreated: isNumber,
     messages: isArrayOf(() => (true))
@@ -50,7 +50,7 @@ export const isGetSavedChatsRequest = (x: any): x is GetSavedChatsRequest => {
     dandisetId: optional(isString),
     dandisetVersion: optional(isString),
     nwbFileUrl: optional(isString),
-    feedback: optional(isString)
+    feedback: optional(isBoolean)
   })
 }
 
@@ -90,7 +90,7 @@ export const isAddSavedChatRequest = (x: any): x is AddSavedChatRequest => {
     nwbFileUrl: optional(isString),
     feedbackResponse: optional(isString),
     feedbackNotes: optional(isString),
-    feedbackOnly: optional(isString),
+    feedbackOnly: optional(isBoolean),
     messages: isArrayOf(() => (true))
   })
 }

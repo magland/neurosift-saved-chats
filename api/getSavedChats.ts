@@ -58,11 +58,14 @@ export default allowCors(async (req, res) => {
     if (feedback) {
       query["feedbackOnly"] = true;
     } else {
-      // make sure that we return records where feedbackOnly is either false or not present
-      query["$or"] = [
-        { feedbackOnly: { $exists: false } },
-        { feedbackOnly: false },
-      ];
+      if (!chatId) {
+        // make sure that we return records where feedbackOnly is either false or not present
+        // note that if we are specifically providing a chatId, we should not filter by feedbackOnly
+        query["$or"] = [
+          { feedbackOnly: { $exists: false } },
+          { feedbackOnly: false },
+        ];
+      }
     }
 
     const a = await collection.find(query).toArray();
