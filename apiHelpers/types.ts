@@ -5,7 +5,12 @@ export type NeurosiftSavedChat = {
   chatId: string
   chatTitle: string
   dandisetId?: string
-  userId: string
+  dandisetVersion?: string
+  nwbFileUrl?: string
+  feedbackResponse?: 'helpful' | 'unhelpful'
+  feedbackNotes?: string
+  feedbackOnly?: boolean
+  userId?: string
   timestampCreated: number
   messages: any[]
 }
@@ -15,7 +20,12 @@ export const isNeurosiftSavedChat = (x: any): x is NeurosiftSavedChat => {
     chatId: isString,
     chatTitle: isString,
     dandisetId: optional(isString),
-    userId: isString,
+    dandisetVersion: optional(isString),
+    nwbFileUrl: optional(isString),
+    feedbackResponse: optional(isString),
+    feedbackNotes: optional(isString),
+    feedbackOnly: optional(isString),
+    userId: optional(isString),
     timestampCreated: isNumber,
     messages: isArrayOf(() => (true))
   })
@@ -26,7 +36,10 @@ export type GetSavedChatsRequest = {
   type: 'GetSavedChats'
   chatId?: string
   userId?: string
-  dandiSetId?: string
+  dandisetId?: string
+  dandisetVersion?: string
+  nwbFileUrl?: string
+  feedback?: boolean
 }
 
 export const isGetSavedChatsRequest = (x: any): x is GetSavedChatsRequest => {
@@ -34,7 +47,10 @@ export const isGetSavedChatsRequest = (x: any): x is GetSavedChatsRequest => {
     type: isEqualTo('GetSavedChats'),
     chatId: optional(isString),
     userId: optional(isString),
-    dandiSetId: optional(isString)
+    dandisetId: optional(isString),
+    dandisetVersion: optional(isString),
+    nwbFileUrl: optional(isString),
+    feedback: optional(isString)
   })
 }
 
@@ -56,6 +72,11 @@ export type AddSavedChatRequest = {
   chatTitle: string
   userId: string
   dandisetId?: string
+  dandisetVersion?: string
+  nwbFileUrl?: string
+  feedbackResponse?: 'helpful' | 'unhelpful'
+  feedbackNotes?: string
+  feedbackOnly?: boolean
   messages: any[]
 }
 
@@ -65,6 +86,11 @@ export const isAddSavedChatRequest = (x: any): x is AddSavedChatRequest => {
     chatTitle: isString,
     userId: isString,
     dandisetId: optional(isString),
+    dandisetVersion: optional(isString),
+    nwbFileUrl: optional(isString),
+    feedbackResponse: optional(isString),
+    feedbackNotes: optional(isString),
+    feedbackOnly: optional(isString),
     messages: isArrayOf(() => (true))
   })
 }
