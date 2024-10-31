@@ -70,7 +70,7 @@ export const isGetSavedChatsResponse = (x: any): x is GetSavedChatsResponse => {
 export type AddSavedChatRequest = {
   type: 'AddSavedChat'
   chatTitle: string
-  userId: string
+  userId?: string
   dandisetId?: string
   dandisetVersion?: string
   nwbFileUrl?: string
@@ -84,7 +84,7 @@ export const isAddSavedChatRequest = (x: any): x is AddSavedChatRequest => {
   return validateObject(x, {
     type: isEqualTo('AddSavedChat'),
     chatTitle: isString,
-    userId: isString,
+    userId: optional(isString),
     dandisetId: optional(isString),
     dandisetVersion: optional(isString),
     nwbFileUrl: optional(isString),
