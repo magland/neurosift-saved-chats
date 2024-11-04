@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import allowCors from "../apiHelpers/allowCors.js";
 import { getMongoClient } from "../apiHelpers/getMongoClient.js";
+import { Bucket, getSignedUploadUrl } from "../apiHelpers/s3Helpers.js";
 import {
   AddSavedChatResponse,
   GetSavedChatsResponse,
@@ -10,6 +11,16 @@ import {
   isNeurosiftSavedChat,
   NeurosiftSavedChat,
 } from "../apiHelpers/types.js";
+
+const bucketCredentials = process.env.BUCKET_CREDENTIALS;
+if (!bucketCredentials) {
+    throw new Error('Missing BUCKET_CREDENTIALS');
+}
+
+const bucket: Bucket = {
+    uri: 'r2://tempory',
+    credentials: bucketCredentials
+}
 
 const DATABASE_NAME = "neurosift-saved-chats";
 const COLLECTION_NAME = "saved-chats";
@@ -25,14 +36,8 @@ export default allowCors(async (req, res) => {
     return;
   }
 
-  const {
-    chatId,
-    userId,
-    dandisetId,
-    dandisetVersion,
-    nwbFileUrl,
-    feedback,
-  } = rr;
+  const { chatId, userId, dandisetId, dandisetVersion, nwbFileUrl, feedback } =
+    rr;
 
   try {
     const client = await getMongoClient();
@@ -128,6 +133,14 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
 
   const { chatTitle, dandisetId, messages } = rr;
 
+  const imageSubstitutions: {
+    name: string; // image://figure_abc.png
+    url: string; // https://tempory.net/.../figure_abc.png
+    uploadUrl: string; // presigned
+  }[] = await applyImageSubstitutions(messages); // modifies messages in place
+
+  const allImageUrls = getAllImageUrls(messages);
+
   try {
     const client = await getMongoClient();
 
@@ -147,6 +160,7 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
       userId,
       messages,
       timestampCreated: Date.now(),
+      imageUrls: allImageUrls,
     };
     removeUndefinedFields(savedChatDoc);
 
@@ -155,6 +169,7 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
     const resp: AddSavedChatResponse = {
       type: "AddSavedChat",
       chatId,
+      imageSubstitutions,
     };
 
     res.status(200).json(resp);
@@ -163,6 +178,85 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+const applyImageSubstitutions = async (messages: any[]) => {
+  const imageSubstitutions: {
+    name: string;
+    url: string;
+    uploadUrl: string;
+  }[] = [];
+  for (const msg of messages) {
+    if (msg.content) {
+      const { contentNew, imageSubstitutions: imageSubstitutions0 } =
+        await applyImageSubstitutionsToContent(msg.content as string);
+      msg.content = contentNew;
+      imageSubstitutions.push(...imageSubstitutions0);
+    }
+  }
+  return imageSubstitutions;
+};
+
+const applyImageSubstitutionsToContent: (content: string) => Promise<{
+  contentNew: string;
+  imageSubstitutions: { name: string; url: string; uploadUrl: string }[];
+}> = async (
+  content
+) => {
+  // find all strings "(image://abcdef.png)" and replace by "(https://tempory.net/.../abcdef.png)" where the latter is a presigned URL
+  const imageSubstitutions: { name: string; url: string; uploadUrl: string }[] =
+    [];
+  let i = 0;
+  let contentNew = "";
+  while (i < content.length) {
+    const j = content.indexOf("(image://", i);
+    if (j < 0) {
+      contentNew += content.slice(i);
+      break;
+    }
+    contentNew += content.slice(i, j);
+    const k = content.indexOf(")", j);
+    if (k < 0) {
+      contentNew += content.slice(j);
+      break;
+    }
+    const name = content.slice(j + '(image://'.length, k);
+    if (!name.endsWith(".png")) {
+      throw Error("Only PNG images are supported");
+    }
+    // year-month-day
+    const dateString = new Date().toISOString().slice(0, 10);
+    const fileKey = `neurosift-saved-chats/images/${dateString}/${generateRandomString(10)}.png`;
+    const downloadUrl = 'https://tempory.net/' + fileKey;
+    const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
+    imageSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
+    contentNew += uploadUrl;
+    i = k;
+  }
+  return { contentNew, imageSubstitutions };
+};
+
+const getAllImageUrls = (messages: any[]) => {
+  const ret: string[] = [];
+  for (const msg of messages) {
+    if (msg.content) {
+      const content = msg.content as string;
+      let i = 0;
+      while (i < content.length) {
+        const j = content.indexOf("(https://", i);
+        if (j < 0) {
+          break;
+        }
+        const k = content.indexOf(")", j);
+        const url = content.slice(j + 1, k);
+        if (url.endsWith(".png")) {
+          ret.push(url);
+        }
+        i = k;
+      }
+    }
+  }
+  return ret;
+}
 
 export const deleteSavedChatHandler = allowCors(async (req, resp) => {
   if (req.method !== "POST") {

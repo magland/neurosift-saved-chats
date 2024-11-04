@@ -13,6 +13,7 @@ export type NeurosiftSavedChat = {
   userId?: string
   timestampCreated: number
   messages: any[]
+  imageUrls?: string[]
 }
 
 export const isNeurosiftSavedChat = (x: any): x is NeurosiftSavedChat => {
@@ -27,7 +28,8 @@ export const isNeurosiftSavedChat = (x: any): x is NeurosiftSavedChat => {
     feedbackOnly: optional(isBoolean),
     userId: optional(isString),
     timestampCreated: isNumber,
-    messages: isArrayOf(() => (true))
+    messages: isArrayOf(() => (true)),
+    imageUrls: optional(isArrayOf(isString))
   })
 }
 
@@ -98,12 +100,24 @@ export const isAddSavedChatRequest = (x: any): x is AddSavedChatRequest => {
 export type AddSavedChatResponse = {
   type: 'AddSavedChat'
   chatId: string
+  imageSubstitutions: {
+    name: string;
+    url: string;
+    uploadUrl: string;
+  }[]
 }
 
 export const isAddSavedChatResponse = (x: any): x is AddSavedChatResponse => {
   return validateObject(x, {
     type: isEqualTo('AddSavedChat'),
-    chatId: isString
+    chatId: isString,
+    imageSubstitutions: isArrayOf((y: any) => {
+      return validateObject(y, {
+        name: isString,
+        url: isString,
+        uploadUrl: isString
+      })
+    })
   })
 }
 
