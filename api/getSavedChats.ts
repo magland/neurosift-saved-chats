@@ -188,7 +188,7 @@ const applyImageSubstitutions = async (messages: any[]) => {
   for (const msg of messages) {
     if (msg.content) {
       const { contentNew, imageSubstitutions: imageSubstitutions0 } =
-        await applyImageSubstitutionsToContent(msg.content as string);
+        await applyImageSubstitutionsToContent(msg.content as string, [...imageSubstitutions]);
       msg.content = contentNew;
       imageSubstitutions.push(...imageSubstitutions0);
     }
@@ -196,15 +196,17 @@ const applyImageSubstitutions = async (messages: any[]) => {
   return imageSubstitutions;
 };
 
-const applyImageSubstitutionsToContent: (content: string) => Promise<{
+const applyImageSubstitutionsToContent: (content: string, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
   contentNew: string;
   imageSubstitutions: { name: string; url: string; uploadUrl: string }[];
 }> = async (
-  content
+  content,
+  previousSubstitutions
 ) => {
   // find all strings "(image://abcdef.png)" and replace by "(https://tempory.net/.../abcdef.png)" where the latter is a presigned URL
   const imageSubstitutions: { name: string; url: string; uploadUrl: string }[] =
     [];
+  const previousSubstitutionsLocal = [...previousSubstitutions];
   let i = 0;
   let contentNew = "";
   while (i < content.length) {
@@ -223,14 +225,22 @@ const applyImageSubstitutionsToContent: (content: string) => Promise<{
     if (!name.endsWith(".png")) {
       throw Error("Only PNG images are supported");
     }
-    // year-month-day
-    const dateString = new Date().toISOString().slice(0, 10);
-    const fileKey = `neurosift-saved-chats/images/${dateString}/${generateRandomString(10)}.png`;
-    const downloadUrl = 'https://tempory.net/' + fileKey;
-    const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
-    imageSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
-    contentNew += uploadUrl;
-    i = k;
+    const previousSubstitution = previousSubstitutionsLocal.find(
+      (x) => x.name === name
+    );
+    if (previousSubstitution) {
+      contentNew += '(' + previousSubstitution.url + ')';
+    } else {
+      // year-month-day
+      const dateString = new Date().toISOString().slice(0, 10);
+      const fileKey = `neurosift-saved-chats/images/${dateString}/${generateRandomString(10)}.png`;
+      const downloadUrl = 'https://tempory.net/' + fileKey;
+      const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
+      imageSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
+      previousSubstitutionsLocal.push({ name, url: downloadUrl, uploadUrl });
+      contentNew += '(' + downloadUrl + ')';
+    }
+    i = k + 1;
   }
   return { contentNew, imageSubstitutions };
 };
@@ -249,7 +259,9 @@ const getAllImageUrls = (messages: any[]) => {
         const k = content.indexOf(")", j);
         const url = content.slice(j + 1, k);
         if (url.endsWith(".png")) {
-          ret.push(url);
+          if (!ret.includes(url)) {
+            ret.push(url);
+          }
         }
         i = k;
       }
