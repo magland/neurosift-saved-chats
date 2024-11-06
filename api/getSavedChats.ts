@@ -212,15 +212,16 @@ const applyFigureDataSubstitutions = async (messages: any[]) => {
     uploadUrl: string;
   }[] = [];
   for (const msg of messages) {
-    if (msg.figureData) {
-      const { figureDataNew, figureDataSubstitutions: figureDataSubstitutions0 } =
-        await applyFigureDataSubstitutionsToFigureData(msg.figureData as any, [...figureDataSubstitutions]);
-      msg.figureData = figureDataNew;
+    if (msg.content) {
+      const { contentNew, figureDataSubstitutions: figureDataSubstitutions0 } =
+        await applyFigureDataSubstitutionsToContent(msg.content as string, [...figureDataSubstitutions]);
+      msg.content = contentNew;
       figureDataSubstitutions.push(...figureDataSubstitutions0);
     }
   }
   return figureDataSubstitutions;
 }
+
 
 const applyImageSubstitutionsToContent: (content: string, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
   contentNew: string;
@@ -229,7 +230,7 @@ const applyImageSubstitutionsToContent: (content: string, previousSubstitutions:
   content,
   previousSubstitutions
 ) => {
-  // find all strings "(image://abcdef.png)" and replace by "(https://tempory.net/.../abcdef.png)" where the latter is a presigned URL
+  // find all strings "(image://abcdef.png)" and replace by "(https://tempory.net/.../abcdef.png)" where the latter is a new download url
   const imageSubstitutions: { name: string; url: string; uploadUrl: string }[] =
     [];
   const previousSubstitutionsLocal = [...previousSubstitutions];
@@ -271,43 +272,54 @@ const applyImageSubstitutionsToContent: (content: string, previousSubstitutions:
   return { contentNew, imageSubstitutions };
 };
 
-const applyFigureDataSubstitutionsToFigureData: (figureData: any, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
-  figureDataNew: any;
+const applyFigureDataSubstitutionsToContent: (content: string, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
+  contentNew: string;
   figureDataSubstitutions: { name: string; url: string; uploadUrl: string }[];
 }> = async (
-  figureData,
+  content,
   previousSubstitutions
 ) => {
-  // find all strings "figureData://abcdef" and replace by "https://tempory.net/.../abcdef.json" where the latter is a presigned URL
+  // find all strings "src=\"figure://abcdef.json\"" and replace by "src=\"https://tempory.net/.../abcdef.json\"" where the latter is a new download url
   const figureDataSubstitutions: { name: string; url: string; uploadUrl: string }[] =
     [];
   const previousSubstitutionsLocal = [...previousSubstitutions];
-  const figureDataNew = JSON.parse(JSON.stringify(figureData));
-  for (const key in figureDataNew) {
-    if (typeof figureDataNew[key] === "string") {
-      const value = figureDataNew[key] as string;
-      if (value.startsWith("figure://")) {
-        const name = value.slice("figure://".length);
-        const previousSubstitution = previousSubstitutionsLocal.find(
-          (x) => x.name === name
-        );
-        if (previousSubstitution) {
-          figureDataNew[key] = previousSubstitution.url;
-        } else {
-          // year-month-day
-          const dateString = new Date().toISOString().slice(0, 10);
-          const fileKey = `neurosift-saved-chats/figureData/${dateString}/${generateRandomString(10)}.json`;
-          const downloadUrl = 'https://tempory.net/' + fileKey;
-          const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
-          figureDataSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
-          previousSubstitutionsLocal.push({ name, url: downloadUrl, uploadUrl });
-          figureDataNew[key] = downloadUrl;
-        }
-      }
+  let i = 0;
+  let contentNew = "";
+  while (i < content.length) {
+    const j = content.indexOf("src=\"figure://", i);
+    if (j < 0) {
+      contentNew += content.slice(i);
+      break;
     }
+    contentNew += content.slice(i, j);
+    const k = content.indexOf("\"", j + "src=\"".length);
+    if (k < 0) {
+      contentNew += content.slice(j);
+      break;
+    }
+    const name = content.slice(j + "src=\"figure://".length, k);
+    if (!name.endsWith(".json")) {
+      throw Error("Only JSON figure data is supported");
+    }
+    const previousSubstitution = previousSubstitutionsLocal.find(
+      (x) => x.name === name
+    );
+    if (previousSubstitution) {
+      contentNew += 'src="' + previousSubstitution.url + '"';
+    } else {
+      // year-month-day
+      const dateString = new Date().toISOString().slice(0, 10);
+      const fileKey = `neurosift-saved-chats/figure-data/${dateString}/${generateRandomString(10)}.json`;
+      const downloadUrl = 'https://tempory.net/' + fileKey;
+      const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
+      figureDataSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
+      previousSubstitutionsLocal.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
+      contentNew += 'src="' + downloadUrl + '"';
+    }
+    i = k + 1;
   }
-  return { figureDataNew, figureDataSubstitutions };
-};
+  return { contentNew, figureDataSubstitutions };
+}
 
 const getAllImageUrls = (messages: any[]) => {
   const ret: string[] = [];
