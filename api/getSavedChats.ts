@@ -139,7 +139,14 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
     uploadUrl: string; // presigned
   }[] = await applyImageSubstitutions(messages); // modifies messages in place
 
+  const figureDataSubstitutions: {
+    name: string; // figure_abc
+    url: string; // https://tempory.net/.../figure_abc.json
+    uploadUrl: string; // presigned
+  }[] = await applyFigureDataSubstitutions(messages); // modifies messages in place
+
   const allImageUrls = getAllImageUrls(messages);
+  const allFigureDataUrls = getAllFigureDataUrls(messages);
 
   try {
     const client = await getMongoClient();
@@ -161,6 +168,7 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
       messages,
       timestampCreated: Date.now(),
       imageUrls: allImageUrls,
+      figureDataUrls: allFigureDataUrls,
     };
     removeUndefinedFields(savedChatDoc);
 
@@ -170,6 +178,7 @@ export const addSavedChatHandler = allowCors(async (req, res) => {
       type: "AddSavedChat",
       chatId,
       imageSubstitutions,
+      figureDataSubstitutions
     };
 
     res.status(200).json(resp);
@@ -195,6 +204,23 @@ const applyImageSubstitutions = async (messages: any[]) => {
   }
   return imageSubstitutions;
 };
+
+const applyFigureDataSubstitutions = async (messages: any[]) => {
+  const figureDataSubstitutions: {
+    name: string;
+    url: string;
+    uploadUrl: string;
+  }[] = [];
+  for (const msg of messages) {
+    if (msg.figureData) {
+      const { figureDataNew, figureDataSubstitutions: figureDataSubstitutions0 } =
+        await applyFigureDataSubstitutionsToFigureData(msg.figureData as any, [...figureDataSubstitutions]);
+      msg.figureData = figureDataNew;
+      figureDataSubstitutions.push(...figureDataSubstitutions0);
+    }
+  }
+  return figureDataSubstitutions;
+}
 
 const applyImageSubstitutionsToContent: (content: string, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
   contentNew: string;
@@ -245,6 +271,44 @@ const applyImageSubstitutionsToContent: (content: string, previousSubstitutions:
   return { contentNew, imageSubstitutions };
 };
 
+const applyFigureDataSubstitutionsToFigureData: (figureData: any, previousSubstitutions: { name: string; url: string; uploadUrl: string }[]) => Promise<{
+  figureDataNew: any;
+  figureDataSubstitutions: { name: string; url: string; uploadUrl: string }[];
+}> = async (
+  figureData,
+  previousSubstitutions
+) => {
+  // find all strings "figureData://abcdef" and replace by "https://tempory.net/.../abcdef.json" where the latter is a presigned URL
+  const figureDataSubstitutions: { name: string; url: string; uploadUrl: string }[] =
+    [];
+  const previousSubstitutionsLocal = [...previousSubstitutions];
+  const figureDataNew = JSON.parse(JSON.stringify(figureData));
+  for (const key in figureDataNew) {
+    if (typeof figureDataNew[key] === "string") {
+      const value = figureDataNew[key] as string;
+      if (value.startsWith("figure://")) {
+        const name = value.slice("figure://".length);
+        const previousSubstitution = previousSubstitutionsLocal.find(
+          (x) => x.name === name
+        );
+        if (previousSubstitution) {
+          figureDataNew[key] = previousSubstitution.url;
+        } else {
+          // year-month-day
+          const dateString = new Date().toISOString().slice(0, 10);
+          const fileKey = `neurosift-saved-chats/figureData/${dateString}/${generateRandomString(10)}.json`;
+          const downloadUrl = 'https://tempory.net/' + fileKey;
+          const uploadUrl = await getSignedUploadUrl(bucket, fileKey);
+          figureDataSubstitutions.push({ name, url: downloadUrl, uploadUrl: uploadUrl });
+          previousSubstitutionsLocal.push({ name, url: downloadUrl, uploadUrl });
+          figureDataNew[key] = downloadUrl;
+        }
+      }
+    }
+  }
+  return { figureDataNew, figureDataSubstitutions };
+};
+
 const getAllImageUrls = (messages: any[]) => {
   const ret: string[] = [];
   for (const msg of messages) {
@@ -259,6 +323,31 @@ const getAllImageUrls = (messages: any[]) => {
         const k = content.indexOf(")", j);
         const url = content.slice(j + 1, k);
         if (url.endsWith(".png")) {
+          if (!ret.includes(url)) {
+            ret.push(url);
+          }
+        }
+        i = k;
+      }
+    }
+  }
+  return ret;
+}
+
+const getAllFigureDataUrls = (messages: any[]) => {
+  const ret: string[] = [];
+  for (const msg of messages) {
+    if (msg.content) {
+      const content = msg.content as string;
+      let i = 0;
+      while (i < content.length) {
+        const j = content.indexOf("src=\"https://", i);
+        if (j < 0) {
+          break;
+        }
+        const k = content.indexOf("\"", j);
+        const url = content.slice(j + "src=\"".length, k);
+        if (url.endsWith(".json")) {
           if (!ret.includes(url)) {
             ret.push(url);
           }
